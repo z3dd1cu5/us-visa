@@ -7,9 +7,10 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from . import global_var as g
 
-wait_timeout = 60
+wait_timeout = 20
 refresh_interval = 30
 
 chrome_options = Options()
@@ -18,8 +19,11 @@ chrome_options.add_argument("--headless")
 def register(country_code, email, password):
     # Login
     try:
+        c_service = Service("/usr/bin/chromedriver")
+        c_service.command_line_args()
+        c_service.start()
         driver = webdriver.Chrome(options=chrome_options)
-        driver.get("https://ais.usvisa-info.com/%s/niv/users/sign_in" % country_code)
+        :river.get("https://ais.usvisa-info.com/%s/niv/users/sign_in" % country_code)
         email_box = driver.find_element_by_id("user_email")
         email_box.clear()
         email_box.send_keys(email)
@@ -79,11 +83,14 @@ def register(country_code, email, password):
         schedule_id = current_url.split("/")[-2]
         session = driver.get_cookie("_yatri_session")["value"]
         driver.quit()
+        c_service.stop()
         return result, session, schedule_id
     except Exception as e:
         print(str(e))
     if driver:
         driver.quit()
+    if c_service:
+        c_service.stop()
     return None, None, None
 
 

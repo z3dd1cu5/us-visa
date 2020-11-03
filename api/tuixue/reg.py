@@ -264,9 +264,10 @@ def visa_select(visa_type, place, sid, requests):
         view_state_version = soup.find(id="com.salesforce.visualforce.ViewStateVersion").get("value")
         view_state_mac = soup.find(id="com.salesforce.visualforce.ViewStateMAC").get("value")
         view_state_csrf = soup.find(id="com.salesforce.visualforce.ViewStateCSRF").get("value")
+        choose_option = {"B": 1, "F": 0, "H": 0, "O": 0, "L": 0}
         inputs = soup.find_all("input")
         type_codes = [x.get("value") for x in inputs if x.get("name") == "j_id0:SiteTemplate:theForm:SelectedVisaPriority"]
-        type_code = type_codes[0]
+        type_code = type_codes[choose_option[visa_type]]
         data = {
             "j_id0:SiteTemplate:theForm": "j_id0:SiteTemplate:theForm",
             "j_id0:SiteTemplate:theForm:j_id170": "继续",

@@ -238,7 +238,8 @@ def visa_select(visa_type, place, sid, requests):
         return None
 
     # select visa priority
-    if place == "金边":
+    priority = config.get("priority")
+    if place in priority:
         select_prior_code_uri = "https://cgifederal.secure.force.com/selectvisapriority"
         r = requests.get(select_prior_code_uri, cookies=cookies, proxies=proxies)
         if r.status_code != 200:
@@ -248,7 +249,7 @@ def visa_select(visa_type, place, sid, requests):
         view_state_version = soup.find(id="com.salesforce.visualforce.ViewStateVersion").get("value")
         view_state_mac = soup.find(id="com.salesforce.visualforce.ViewStateMAC").get("value")
         view_state_csrf = soup.find(id="com.salesforce.visualforce.ViewStateCSRF").get("value")
-        choose_option = {"B": 1, "F": 0, "H": 0, "O": 0, "L": 0}
+        choose_option = priority[place]
         inputs = soup.find_all("input")
         type_codes = [x.get("value") for x in inputs if x.get("name") == "j_id0:SiteTemplate:theForm:SelectedVisaPriority"]
         type_code = type_codes[choose_option[visa_type]]

@@ -1,5 +1,6 @@
 import sys
 import time
+import json
 import random
 import requests
 from threading import Lock
@@ -11,12 +12,16 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.action_chains import ActionChains
 from . import global_var as g
+from . import config
 
-wait_timeout = 80
+wait_timeout = 20
 refresh_interval = 30
 
 chrome_options = Options()
+chrome_options.add_experimental_option('excludeSwitches', ['enable-automation'])
+chrome_options.add_experimental_option('useAutomationExtension', False)
 chrome_options.add_argument("--headless")
 
 cache = {}
@@ -39,6 +44,7 @@ def register(country_code, email, password, node):
             command_executor='http://%s:4444/wd/hub' % entry,
             desired_capabilities=chrome_options.to_capabilities()
         )
+        driver.set_window_size(1036 + random.randint(0, 20), 583 + random.randint(0, 20))
         print("Choose Node:", entry)
 
         if email in cache:
@@ -48,16 +54,22 @@ def register(country_code, email, password, node):
             driver.add_cookie({'name' : '_yatri_session', 'value' : new_session, 'path' : '/', 'domain': 'ais.usvisa-info.com', 'secure': True})
             driver.get("https://ais.usvisa-info.com/%s/niv/groups/%s" % (country_code, group_id))
         else:
-            driver.get("https://ais.usvisa-info.com/%s/niv/users/sign_in" % country_code)
-            email_box = driver.find_element_by_id("user_email")
-            email_box.clear()
-            email_box.send_keys(email)
-            password_box = driver.find_element_by_id("user_password")
-            password_box.clear()
-            password_box.send_keys(password)
-            driver.execute_script("document.getElementById('policy_confirmed').click()")
-            signin_button = driver.find_element_by_name("commit")
-            signin_button.click()
+            ais_ng_lock = g.value("ais_ng_lock", Lock())
+            ais_ng_lock.acquire()
+            try:
+                r = requests.get(config.get("ais_ng_api") + "?code=%s&email=%s&pswd=%s" % (country_code, email, password))
+            except:
+                pass
+            ais_ng_lock.release()
+            new_session = ""
+            cookies_list = json.loads(r.text)
+            for item in cookies_list:
+                if item.get("name") == "_yatri_session":
+                    new_session = item.get("value")
+
+            driver.get("https://ais.usvisa-info.com")
+            driver.add_cookie({'name' : '_yatri_session', 'value' : new_session, 'path' : '/', 'domain': 'ais.usvisa-info.com', 'secure': True})
+            driver.get("https://ais.usvisa-info.com/%s/niv" % country_code)
 
         def wait_loading(xpath, option="locate"):
             try:

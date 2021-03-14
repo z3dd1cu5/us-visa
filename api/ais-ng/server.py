@@ -13,9 +13,22 @@ class MainHandler(tornado.web.RequestHandler):
         email = self.get_argument('email', '')
         password = self.get_argument('pswd', '')
         lock.acquire()
-        os.system('bash /home/zeddy/ais-ng/run.sh "%s" "%s" "%s" "/home/zeddy/ais-ng/session.txt"' % (code, email, password))
-        self.write(open("/home/zeddy/ais-ng/session.txt", "r").read())
+        try:
+            os.system('bash /home/zeddy/ais-ng/run.sh "%s" "%s" "%s" "/home/zeddy/ais-ng/session.txt"' % (code, email, password))
+            page_text = open("/home/zeddy/ais-ng/session.txt.page", "r").read()
+            if "Account Inactive" in page_text:
+                self.write('{"code": 401, "error": "Account Banned"}')
+            elif "Continue" in page_text:
+                self.write(open("/home/zeddy/ais-ng/session.txt", "r").read())
+            else:
+                self.write('{"code": 402, "error": "AIS NG Failed"}')
+        except Exception as e:
+            print(e)
+            self.write('{"code": 402, "error": "AIS NG Failed"}')
+        os.system('rm "/home/zeddy/ais-ng/session.txt"')
+        os.system('rm "/home/zeddy/ais-ng/session.txt.page"')
         lock.release()
+
         os.system('echo "[%s] %s %s %s" >> /home/zeddy/ais-ng/log.txt' % (datetime.now().strftime("%Y-%m-%d, %H:%M:%S"), code, email, password))
 
 def make_app():

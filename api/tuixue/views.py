@@ -87,6 +87,10 @@ def ais_register(request):
         result, session, schedule_id = ais_reg.register(country_code, email, pswd, node)
     except Exception as e:
         print(e)
+    if result == 401:
+        return HttpResponse('{"code": 403, "msg": "Account Banned"}')
+    elif result == 402:
+        return HttpResponse('{"code": 404, "msg": "AIS NG Error"}')
     if not result or not session or not schedule_id:
         return HttpResponse('{"code": 402, "msg": "Network Error"}')
     obj = {

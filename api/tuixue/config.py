@@ -1,12 +1,22 @@
 import os
 import json
 from datetime import datetime
+from threading import Lock
+
+lock = Lock()
 
 def load_config():
     global config
-    with open("config.json", "r") as f:
-        config = json.load(f)
-    return datetime.now()
+    with lock:
+        with open("config.json", "r") as f:
+            config = json.load(f)
+        return datetime.now()
+
+def save_config():
+    global config
+    with lock:
+        with open("config.json", "w") as f:
+            json.dump(config, f, ensure_ascii=False, indent=4)
 
 config = {}
 last_update = load_config()

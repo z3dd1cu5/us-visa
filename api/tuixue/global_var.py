@@ -13,18 +13,15 @@ class GlobalVar:
     var_set = {}
 
 def assign(var_name, var_value):
-    lock.acquire()
-    GlobalVar.var_set[var_name] = var_value
-    lock.release()
+    with lock:
+        GlobalVar.var_set[var_name] = var_value
 
 def value(var_name, default_value):
-    lock.acquire()
-    if not var_name in GlobalVar.var_set:
-        GlobalVar.var_set[var_name] = default_value
-        lock.release()
-        return default_value
-    lock.release()
-    return GlobalVar.var_set[var_name]
+    with lock:
+        if not var_name in GlobalVar.var_set:
+            GlobalVar.var_set[var_name] = default_value
+            return default_value
+        return GlobalVar.var_set[var_name]
 
 """
 Some constants
@@ -72,4 +69,11 @@ MONTH = {
     "October": 10,
     "November": 11,
     "December": 12
+}
+VISA_PROMPT = {
+    "F": "F-1 - 就读学术机构和语言学校的学生",
+    "B": "B1/B2 - 商务旅行和旅游观光",
+    "H": "H-1B - 从事特定技能领域的专业人士",
+    "O": "O-1 - 在科学、艺术、教育领域有杰出才能的外国公民",
+    "L": "L-1 (Individual) - 公司内部调职者（个人）"
 }

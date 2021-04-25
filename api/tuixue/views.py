@@ -35,12 +35,12 @@ def register(request):
 
     sess = date = None
     try:
-        sess, date = reg.do_register(visa_type, place)
+        sess, date, info = reg.do_register(visa_type, place)
     except Exception as e:
         print(e)
     if not sess or not date:
-        return HttpResponse('{"code": 402, "msg": "Network Error"}')
-    return HttpResponse('{"code": 0, "msg": "%d-%d-%d", "session": "%s"}' % (date[0], date[1], date[2], sess))
+        return HttpResponse('{"code": 402, "msg": "Network Error", "info": "%s"}' % info.replace('"', '\\"'))
+    return HttpResponse('{"code": 0, "msg": "%d-%d-%d", "session": "%s", "info": "%s"}' % (date[0], date[1], date[2], sess, info.replace('"', '\\"')))
 
 def ais_refresh(request):
     if request.method == "GET":

@@ -4,6 +4,7 @@ import copy
 import json
 import base64
 import requests
+import datetime
 import numpy as np
 from . import global_var as g
 from . import config
@@ -11,6 +12,7 @@ from . import vcode2
 from bs4 import BeautifulSoup as bs
 
 def do_register(visa_type, place):
+    config.load_config()
     cracker = vcode2.Captcha()
     req = requests.Session()
     username, passwd, sid = login(cracker, place, req)
@@ -33,10 +35,9 @@ def get_date(page):
 
 def login(cracker, place, requests):
     proxies = g.value("proxies", None)
-    ref = config.get("ref")
 
     # get register page
-    REG_URI = "https://cgifederal.secure.force.com/SiteRegister?country=%s&language=zh_CN" % ref[place]
+    REG_URI = "https://cgifederal.secure.force.com/SiteRegister?country=%s&language=zh_CN" % config.get("ref", place)
     r = requests.get(REG_URI, proxies=proxies)
     if r.status_code != 200:
         return None
@@ -50,7 +51,7 @@ def login(cracker, place, requests):
         cookies = r.cookies
 
         # get recaptcha
-        REG_CAPTCHA_URI = "https://cgifederal.secure.force.com/SiteRegister?refURL=https%3A%2F%2Fcgifederal.secure.force.com%2F%3Flanguage%3DChinese%2520%28Simplified%29%26country%3D" + ref[place]
+        REG_CAPTCHA_URI = "https://cgifederal.secure.force.com/SiteRegister?refURL=https%3A%2F%2Fcgifederal.secure.force.com%2F%3Flanguage%3DChinese%2520%28Simplified%29%26country%3D" + config.get("ref", place)
         data = {
             "AJAXREQUEST": "_viewRoot",
             "Registration:SiteTemplate:theForm": "Registration:SiteTemplate:theForm",
@@ -156,8 +157,7 @@ def visa_select(visa_type, place, sid, requests):
         return None, type_info
 
     # select place
-    place2id = config.get("place2id")
-    if place in place2id.keys():
+    if place in config.get("place2id").keys():
         select_post_uri = "https://cgifederal.secure.force.com/selectpost"
         r = requests.get(select_post_uri, cookies=cookies, proxies=proxies)
         if r.status_code != 200:
@@ -168,7 +168,7 @@ def visa_select(visa_type, place, sid, requests):
         view_state_mac = soup.find(id="com.salesforce.visualforce.ViewStateMAC").get("value")
         view_state_csrf = soup.find(id="com.salesforce.visualforce.ViewStateCSRF").get("value")
         contact_id = soup.find(id="j_id0:SiteTemplate:j_id112:contactId").get("value")
-        target_id = "j_id0:SiteTemplate:j_id112:j_id165:" + str(place2id[place])
+        target_id = "j_id0:SiteTemplate:j_id112:j_id165:" + str(config.get("place2id", place))
         place_code = soup.find(id=target_id).get("value")
         data = {
             "j_id0:SiteTemplate:j_id112": "j_id0:SiteTemplate:j_id112",
@@ -189,8 +189,8 @@ def visa_select(visa_type, place, sid, requests):
         # select visa category
         select_visa_category_uri = "https://cgifederal.secure.force.com/selectvisacategory"
         r = requests.get(select_visa_category_uri, cookies=cookies, proxies=proxies)
-        #if r.status_code != 200:
-        #    return None, type_info
+        if r.status_code != 200:
+            return None, type_info
         soup = bs(r.text, "html.parser")
         view_state = soup.find(id="com.salesforce.visualforce.ViewState").get("value")
         view_state_version = soup.find(id="com.salesforce.visualforce.ViewStateVersion").get("value")
@@ -198,12 +198,16 @@ def visa_select(visa_type, place, sid, requests):
         view_state_csrf = soup.find(id="com.salesforce.visualforce.ViewStateCSRF").get("value")
         contact_id = soup.find(id="j_id0:SiteTemplate:j_id109:contactId").get("value")
         prefix = "j_id0:SiteTemplate:j_id109:j_id162:"
-        category2id = config.get("category2id")
-        if not place in category2id[visa_type]:
-            category2id[visa_type][place] = 0
+        if not place in config.get("category2id", visa_type):
+            config.set(0, "category2id", visa_type, place)
             is_valid = False
         category_count = len(soup.find_all("input", {"type": "radio"}))
-        category_code = soup.find(id=prefix + str(category2id[visa_type][place])).get("value")
+        choice_idx = config.get("category2id", visa_type, place)
+        if not choice_idx < category_count:
+            config.set(0, "category2id", visa_type, place)
+            choice_idx = 0
+            is_valid = False
+        category_code = soup.find(id=prefix + str(choice_idx)).get("value")
         data = {
             "j_id0:SiteTemplate:j_id109": "j_id0:SiteTemplate:j_id109",
             "j_id0:SiteTemplate:j_id109:j_id162": category_code,
@@ -215,14 +219,14 @@ def visa_select(visa_type, place, sid, requests):
             "com.salesforce.visualforce.ViewStateCSRF": view_state_csrf
         }
         r = requests.post(select_visa_category_uri, data=data, cookies=cookies, proxies=proxies)
-        #if r.status_code != 200:
-        #    return None, type_info
+        if r.status_code != 200:
+            return None, type_info
 
         # select visa type
         select_visa_code_uri = "https://cgifederal.secure.force.com/selectvisacode"
         r = requests.get(select_visa_code_uri, cookies=cookies, proxies=proxies)
-        #if r.status_code != 200:
-        #    return None, type_info
+        # if r.status_code != 200:
+        #     return None, type_info
         soup = bs(r.text, "html.parser")
         view_state = soup.find(id="com.salesforce.visualforce.ViewState").get("value")
         view_state_version = soup.find(id="com.salesforce.visualforce.ViewStateVersion").get("value")
@@ -235,12 +239,12 @@ def visa_select(visa_type, place, sid, requests):
         if try_count > category_count:
             # in case of no choice
             break
-        if g.VISA_PROMPT[visa_type] not in type_infos:
-            category2id[visa_type][place] += 1
-            category2id[visa_type][place] %= category_count
+        if sum([i.startswith(g.VISA_PROMPT[visa_type]) for i in type_infos]) == 0:
+            tmp = config.get("category2id", visa_type, place) 
+            config.set((tmp + 1) % category_count, "category2id", visa_type, place)
             is_valid = False
             continue
-        type_idx = type_infos.index(g.VISA_PROMPT[visa_type])
+        type_idx = [i.startswith(g.VISA_PROMPT[visa_type]) for i in type_infos].index(True)
         type_code = type_codes[type_idx]
         type_info = type_infos[type_idx]
         data = {
@@ -253,8 +257,8 @@ def visa_select(visa_type, place, sid, requests):
             "com.salesforce.visualforce.ViewStateCSRF": view_state_csrf
         }
         r = requests.post(select_visa_code_uri, data=data, cookies=cookies, proxies=proxies)
-        #if r.status_code != 200:
-        #    return None, type_info
+        if r.status_code != 200:
+            return None, type_info
         break
 
     if not is_valid:
@@ -274,14 +278,12 @@ def visa_select(visa_type, place, sid, requests):
         inputs = soup.find_all("input")
         type_codes = [x.get("value") for x in inputs if x.get("name") == "j_id0:SiteTemplate:theForm:SelectedVisaPriority"]
         type_infos = [re.sub('<[^>]*>', "", x.parent.label.text.strip()) for x in inputs if x.get("name") == "j_id0:SiteTemplate:theForm:SelectedVisaPriority"]
-        print(type_infos)
         choose_option = "Regular" if place.endswith("r") else "Non-Resident"
         if len(type_infos) > 0:
             for idx, info in enumerate(type_infos):
                 if not info.startswith(choose_option):
                     continue
                 type_code = type_codes[idx]
-                print(idx)
                 data = {
                     "j_id0:SiteTemplate:theForm": "j_id0:SiteTemplate:theForm",
                     "j_id0:SiteTemplate:theForm:j_id170": "继续",
@@ -302,3 +304,22 @@ def visa_select(visa_type, place, sid, requests):
     if date:
         g.assign("status_%s_%s" % (visa_type, place), date)
     return date, type_info
+
+def operation(keys, value, op):
+    config.load_config()
+    if op == "get":
+        obj = config.get(*keys)
+        return json.dumps(obj, ensure_ascii=False)
+    elif op == "set":
+        try:
+            value = int(value)
+        except:
+            pass
+        config.set(value, *keys)
+        config.save_config()
+        obj = config.get(*keys)
+        return json.dumps(obj, ensure_ascii=False)
+    elif op == "del":
+        config.delete(*keys)
+        config.save_config()
+        return "Done"

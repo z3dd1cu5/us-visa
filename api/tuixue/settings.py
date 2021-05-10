@@ -12,6 +12,18 @@ https://docs.djangoproject.com/en/2.2/ref/settings/
 
 import os
 
+# API Options
+CGI_CORE_API = True
+
+AIS_CORE_API = True
+AIS_CAPTCHA_API_ENDPOINT = "http://127.0.0.1:8000/ais/captcha/"
+
+AIS_CAPTCHA_API = True
+AIS_CAPTCHA_DIR = '/home/zeddy/us-visa/api/ais-ng/'
+SCRIPT_PATH = AIS_CAPTCHA_DIR + 'run.sh'
+SESSION_PATH = AIS_CAPTCHA_DIR + 'session.txt'
+LOG_PATH = AIS_CAPTCHA_DIR + 'log.txt'
+
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -23,7 +35,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SECRET_KEY = '=!r=^g^#pusa(4^!he9l__w5r7bo$5@h(*9r(ufm4hiw@%b6a1'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
 ALLOWED_HOSTS = ['127.0.0.1', 'localhost']
 
@@ -31,6 +43,7 @@ ALLOWED_HOSTS = ['127.0.0.1', 'localhost']
 # Application definition
 
 INSTALLED_APPS = [
+    'db',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',

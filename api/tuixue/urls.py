@@ -15,12 +15,17 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path
-from . import views
+from . import views, settings
 
 urlpatterns = [
     path('', views.index, name='index'),
+] + ([
     path('refresh/', views.refresh, name='refresh'),
     path('register/', views.register, name='register'),
+    path('manage/', views.manage, name='manage'),
+] if settings.CGI_CORE_API else []) + ([
     path('ais/refresh/', views.ais_refresh, name='ais_refresh'),
     path('ais/register/', views.ais_register, name='ais_register'),
-]
+] if settings.AIS_CORE_API else []) + ([
+    path('ais/captcha/', views.ais_captcha, name='ais_captcha'),
+] if settings.AIS_CAPTCHA_API else [])

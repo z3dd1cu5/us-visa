@@ -6,20 +6,24 @@ import requests
 import traceback
 from bs4 import BeautifulSoup
 from threading import Lock
+from django.utils import timezone
 from . import global_var as g
 from . import config
+from . import settings
+from db.models import AISAccountCache, AISNGLastCall
 
 wait_timeout = 120
-cache = {}
 
 def register(country_code, email, password, node):
-    global cache
     lock = g.value(email + "_lock", Lock())
     with lock:
         try:
             new_session = None
-            if email in cache:
-                session, schedule_id, group_id = cache[email]
+            r = AISAccountCache.objects.filter(email=email)
+            if len(r) > 0:
+                session = r[0].session
+                schedule_id = r[0].schedule_id
+                group_id = r[0].group_id
                 new_session = change_region(country_code, session, group_id)
 
             if not new_session:
@@ -27,22 +31,34 @@ def register(country_code, email, password, node):
                 if not new_session:
                     return code, None, None
 
-            group_id, schedule_id, new_session = account_page(new_session)
+            group_id, schedule_id, new_session = account_page(new_session, country_code)
+            if group_id == -1:
+                # Cache invalid
+                code, new_session = ais_ng(country_code, email, password)
+                if not new_session:
+                    return code, None, None
+                group_id, schedule_id, new_session = account_page(new_session, country_code)
+
             if not schedule_id:
                 return None, None, None
-            content, session = payment_page(new_session, schedule_id)
+            content, session = payment_page(new_session, schedule_id, country_code)
             if not content:
                 return None, None, None
 
             result = parse_date(content)
             if result:
-                cache[email] = [session, schedule_id, group_id]
+                if len(r) > 0:
+                    r.update(session=session, schedule_id=schedule_id, group_id=group_id)
+                else:
+                    item = AISAccountCache(email=email, session=session, schedule_id=schedule_id, group_id=group_id)
+                    item.save()
             else:
-                del cache[email]
+                if len(r) > 0:
+                    r.delete()
             return result, session, schedule_id
         except Exception as e:
-            if email in cache:
-                del cache[email]
+            if len(r) > 0:
+                r.delete()
             traceback.print_exc()
             return None, None, None
 
@@ -64,32 +80,43 @@ def change_region(country_code, session, group_id):
 
 
 def ais_ng(country_code, email, password):
+    r = AISNGLastCall.objects.filter(email=email)
+    if len(r) == 0:
+        item = AISNGLastCall(email=email, last_call_time=timezone.now())
+        item.save()
+    else:
+        last_call_time = r[0].last_call_time
+        interval = timezone.now() - last_call_time
+        if interval.total_seconds() < 12 * 60:
+            return 405, None
+        else:
+            r.update(last_call_time=timezone.now())
     ais_ng_lock = g.value("ais_ng_lock", Lock())
     with ais_ng_lock:
         try:
-            r = requests.get(config.get("ais_ng_api") + "?code=%s&email=%s&pswd=%s" % (country_code, email, password), timeout=wait_timeout)
+            r = requests.get(settings.AIS_CAPTCHA_API_ENDPOINT + "?code=%s&email=%s&pswd=%s" % (country_code, email, password), timeout=wait_timeout)
+            new_session = ""
+            cookies_list = json.loads(r.text)
+            if not type(cookies_list) == list:
+                return cookies_list["code"], None
+            for item in cookies_list:
+                if item.get("name") == "_yatri_session":
+                    new_session = item.get("value")
+                    return 0, new_session
         except:
             pass
-    new_session = ""
-    cookies_list = json.loads(r.text)
-    if not type(cookies_list) == list:
-        return cookies_list["code"], None
-    for item in cookies_list:
-        if item.get("name") == "_yatri_session":
-            new_session = item.get("value")
-            return 0, new_session
     return None, None
 
 
-def account_page(new_session):
+def account_page(new_session, country_code):
     r = requests.get(
-        "https://ais.usvisa-info.com/en-gb/niv/account", 
+        "https://ais.usvisa-info.com/%s/niv/account" % country_code, 
         cookies={
             "_yatri_session": new_session
         }, 
         headers={
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36",
-            "Referer": "https://ais.usvisa-info.com/en-gb/niv/users/sign_in"
+            "Referer": "https://ais.usvisa-info.com/%s/niv/users/sign_in" % country_code
         },
         allow_redirects=False
     )
@@ -99,33 +126,36 @@ def account_page(new_session):
     new_session = r.cookies["_yatri_session"]
 
     r = requests.get(
-        "https://ais.usvisa-info.com/en-gb/niv/groups/" + group_id, 
+        "https://ais.usvisa-info.com/" + country_code + "/niv/groups/" + group_id, 
         cookies={
             "_yatri_session": new_session
         }, 
         headers={
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36",
-            "Referer": "https://ais.usvisa-info.com/en-gb/niv/users/sign_in"
+            "Referer": "https://ais.usvisa-info.com/%s/niv/users/sign_in" % country_code
         }
     )
     if r.status_code != 200:
         return None, None, None
     soup = BeautifulSoup(r.text, "html.parser")
-    link = soup.find('a', text="Continue").get('href')
+    continue_button = soup.find('a', text="Continue")
+    if not continue_button:
+        return -1, None, None
+    link = continue_button.get('href')
     schedule_id = link.split("/")[-2]
     new_session = r.cookies["_yatri_session"]
     return group_id, schedule_id, new_session
 
 
-def payment_page(new_session, schedule_id):
+def payment_page(new_session, schedule_id, country_code):
     r = requests.get(
-        "https://ais.usvisa-info.com/en-gb/niv/schedule/%s/payment" % schedule_id, 
+        "https://ais.usvisa-info.com/%s/niv/schedule/%s/payment" % (country_code, schedule_id), 
         cookies={
             "_yatri_session": new_session
         }, 
         headers={
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36",
-            "Referer": "https://ais.usvisa-info.com/en-gb/niv/schedule/%s/continue_actions" % schedule_id
+            "Referer": "https://ais.usvisa-info.com/%s/niv/schedule/%s/continue_actions" % (country_code, schedule_id)
         }
     )
     if r.status_code != 200:
